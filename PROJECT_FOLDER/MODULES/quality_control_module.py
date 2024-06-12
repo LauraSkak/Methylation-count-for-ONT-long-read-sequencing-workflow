@@ -96,7 +96,7 @@ def merge_alignment_pycoQCs(summary_file_list, alignment_file_list, QC_outfile, 
     """
     inputs = summary_file_list + alignment_file_list
     outputs = [QC_outfile]
-    options = {"walltime":"10:00:00","account":"sexChromosomes", "memory":"500gb"}
+    options = {"walltime":"24:00:00","account":"sexChromosomes", "memory":"1000gb"}
     spec = '''
     
     CONDA_BASE=$(conda info --base)

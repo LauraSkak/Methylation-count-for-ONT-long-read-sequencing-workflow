@@ -45,7 +45,7 @@ def phasing_whatshap(alignment_file, variant_file_dir, reference):
     
     CONDA_BASE=$(conda info --base)
     source $CONDA_BASE/etc/profile.d/conda.sh
-    conda activate clair3
+    conda activate whatshap
 
     echo "Job ID: $SLURM_JOB_ID"
     
@@ -57,7 +57,7 @@ def phasing_whatshap(alignment_file, variant_file_dir, reference):
         --reference {ref} \
         --output {phased_variant_outfile} \
         {vcf_infile} {bam_infile}
-
+    
     echo "tabix -p vcf {phased_variant_outfile}"
 
     tabix -p vcf {phased_variant_outfile}
@@ -72,13 +72,13 @@ def haplotagging_whatshap(alignment_file, reference, variant_file_dir, phased_ba
     Makes a new .bam file containing a haplotag for each read. A .gtf file containing data for continously phased segments are also created.
     """
     inputs = [alignment_file, f'{variant_file_dir}/phased.vcf.gz', f'{variant_file_dir}/phased.vcf.gz.tbi']
-    outputs = [phased_bam_file, f'{variant_file_dir}/haplo_blocks.gft']
+    outputs = [phased_bam_file, f'{phased_bam_file}.bai', f'{variant_file_dir}/haplo_blocks.gft']
     options = {"walltime":"12:00:00","account":"sexChromosomes", "memory":"50gb", "cores": 32}
     spec = '''
     
     CONDA_BASE=$(conda info --base)
     source $CONDA_BASE/etc/profile.d/conda.sh
-    conda activate clair3
+    conda activate whatshap
 
     echo "Job ID: $SLURM_JOB_ID"
     
@@ -100,7 +100,6 @@ def haplotagging_whatshap(alignment_file, reference, variant_file_dir, phased_ba
     
     whatshap stats --gtf {haplo_block_outfile} {phased_variant_outfile}
     
-    
     conda activate samtools
     
     echo "samtools index -@ 32 {phased_bam_outfile}"
@@ -108,5 +107,50 @@ def haplotagging_whatshap(alignment_file, reference, variant_file_dir, phased_ba
     samtools index -@ 32 {phased_bam_outfile}
     
     '''.format(ref = reference, phased_variant_outfile = f'{variant_file_dir}/phased.vcf.gz', bam_infile = alignment_file, phased_bam_outfile = phased_bam_file, haplo_block_outfile = f'{variant_file_dir}/haplo_blocks.gft')
+    
+    return AnonymousTarget(inputs=inputs, outputs=outputs, options=options, spec=spec)
+
+def run_sniffles_2(bam_infile, vcf_infile, vcf_outfile, snf_outfile, sample_name, reference, tandem_repeats_bed, min_support, min_size):
+    """
+    Makes a new .bam file containing a haplotag for each read. A .gtf file containing data for continously phased segments are also created.
+    """
+    inputs = [bam_infile, vcf_infile, reference]
+    outputs = [vcf_outfile, snf_outfile]
+    options = {"walltime":"12:00:00","account":"sexChromosomes", "memory":"16gb", "cores": 16}
+    spec = f'''
+    
+    CONDA_BASE=$(conda info --base)
+    source $CONDA_BASE/etc/profile.d/conda.sh
+    conda activate sniffles2
+
+    echo "Job ID: $SLURM_JOB_ID"
+    
+    sniffles \
+        --threads 16 \
+        --sample-id {sample_name} \
+        --input {bam_infile} \
+        --vcf {vcf_infile} \
+        --reference {reference} \
+        --minsvlen {min_size} \
+        --output-rnames \
+        --symbolic \
+        --snf {snf_outfile} \
+        --tandem-repeats {tandem_repeats_bed} \
+        --allow-overwrite
+
+
+    # Remove invalid mutations and reads with low support
+    cat {vcf_infile} \
+    | sed '/.:0:0:0:NULL/d' \
+    | bcftools sort \
+    | bcftools view \
+        --include 'INFO/SUPPORT >= {min_support}' \
+        --output-type z \
+    > {vcf_outfile}
+
+    # Index
+    tabix -p vcf {vcf_outfile}
+    
+    '''
     
     return AnonymousTarget(inputs=inputs, outputs=outputs, options=options, spec=spec)
